@@ -1,4 +1,5 @@
 # 00-packages.R
+# with thanks to Mattheus for this package script btw
 #
 # Installs (only if missing) and loads every package you need for this
 # project. Run this first -

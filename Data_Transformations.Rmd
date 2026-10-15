@@ -20,7 +20,7 @@ rm(list = ls())
 
 # installs (if missing) and loads every package this project uses - add any
 # new packages to scripts/00-packages.R, not here
-source(here::here("data", "00-packages.R"))
+source(here::here("00-packages.R")) 
 
 ```
 
@@ -48,6 +48,12 @@ Will need to be examined in a similar manner.
 
 
 # Importing Data 
+Running the code below and loading the data should work if you create a 
+folder named "data" in our repository and copy all the data files into this folder.
+This folder is in .gitignore so will not be uploaded online but will stay in 
+your local environment. 
+
+
 ## 1. Pupils 
 The pupil data is such that each variable is of the correct type and column 
 names do not contain any spaces. 
@@ -64,7 +70,7 @@ spaces. old_name = "new_name"
 
 ```{r importing pupil data}
 # import the pupil data set with the correct data types 
-pupils <- read_xlsx("Pupils.xlsx",
+pupils <- read_xlsx(here::here("data", "Pupils.xlsx"),
                     col_names = c("ID", "birth_date", "curr_class",
                                   "curr_year_group", "pupil", "start_date"),
                     skip = 1, # drops the original header row 
@@ -110,23 +116,25 @@ the data is imported in the correct format. Secondly, only the rows containing
 information of the selected pupils above is retained. After filtering the data, 
 this file contains 96821 rows. 
 ```{r importing observation year 1/2 data}
-observations_1_2 <- read_xlsx("Observaties_groep_1_2.xlsx",
+observations_1_2 <- read_xlsx(here::here("data", "Observaties_groep_1_2.xlsx"),
                               sheet = 1, # select only first tab in excel file 
-                              col_types = c("skip", "text", "text", "text", "text",
-                                            "text", "text", "date", "numeric",
-                                            "text", "text", "text")) |>
+                              col_types = c("skip", "text", "text", "text",
+                                            "text", "text", "text", "date",
+                                            "numeric", "text", "text", "text")) |>
   mutate(Score = as.numeric(Score), Datum = as.Date(Datum)) # convert type 
 ```
 
 
-
 ```{r filter selected pupils}
+# only keep data about the pupils as selected above 
 observation_selection <-
   observations_1_2 |>
   filter(Leerling %in% pupil_names)
 
 observation_selection
 ```
+
+
 # Time spent in Kindergarten 
 In order to examine how long each pupil stayed in kindergarten, and whether 
 these periods differ enough between pupils to compare between groups, we will 
@@ -244,12 +252,12 @@ sample size of N = 79.
 
 ```{r}
 # asked claude how to visualise the distribution 
-kg <- kindergarten_checked |>
+kg_plot <- kindergarten_checked |>
   filter(curr_year_group %in% 3:6, all_checks_ok) |>
   mutate(kindergarten_years = time_length(interval(start_date, make_date(end_year, 9, 1)), "years"))
 
 
-kg |>
+kg_plot |>
   summarise(n = n(),
             mean = mean(kindergarten_years),
             sd = sd(kindergarten_years),
@@ -258,8 +266,13 @@ kg |>
             max = max(kindergarten_years))
 
 
-ggplot(kg, aes(x = kindergarten_years)) +
-  geom_histogram(binwidth = 1/12, colour = "white") +
-  labs(x = "Time in kindergarten (years)", y = "Number of pupils")
+ggplot(kg_plot, aes(x = kindergarten_years)) +
+  geom_histogram(binwidth = 1/12, colour = "white", fill =  "#01665e") +
+  labs(x = "Time in kindergarten (years)",
+       y = "Number of pupils",
+       title = "Distribution of time spent in Kindergarten by the selected pupils", 
+       subtitle = "N = 79") 
+
+?scale_x_continuous()
 ```
 
