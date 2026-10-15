@@ -273,6 +273,5 @@ ggplot(kg_plot, aes(x = kindergarten_years)) +
        title = "Distribution of time spent in Kindergarten by the selected pupils", 
        subtitle = "N = 79") 
 
-?scale_x_continuous()
 ```
 
