@@ -211,20 +211,35 @@ ggplot(kg_plot, aes(x = kindergarten_years)) +
 
 ```
 
+To operationalize the cognitive, social-emotional and executive development of the pupils, we obtain the scores from the observations from Group1/2 from selected domains. Below are the domains we used to measure each of the three functions. In this analysis, we assume that each objectives carries the same weight in measuring the developmental function.
+
+|      *Cognitive*        |   *Social-emotional* |  *Executive development*  |
+|:-----------------------:|:--------------------:|:-------------------------:|
+|Auditory development     |Society               |Balancing                  |
+|Numbers                  |Emotional competencies|Engagement                 |
+|Interactive language use |Empathy               |Emotional competencies     |
+|Knowledge                |Self and others       |Impulse control            |
+|Process                  |The space around you  |Moral competencies         |
+|Play                     |Social initiative     |Task focus and independence|
+|Playing                  |Social autonomy       |                           |
+|Counting and number sense|Social competencies   |                           |
+|Counting and numbers     |Social flexibility    |                           |
+|Visual development       |Rough-and-tumble play |                           |
+|                         |Well-being            |                           |
+
+*insert short explanation why we chose these*
+
+
+Firstly, the 79 pupils who pass all checks are saved in a table. The observations file is imported in the correct format, this time to extract the domain information from it. Only the rows with observations from the selected pupils are retained.
+
 ```{r}
-#the 79 pupils who pass all checks
+#store the 79 pupils who pass all checks
 pupils_ok <- kindergarten_checked %>%
   filter(all_checks_ok == TRUE)
 
-#import observations data separately again
-observations_filtered <- read_xlsx(here::here("data", "Observaties_groep_1_2.xlsx"),
-                                   col_types = c("skip", "skip", "text", "skip", "skip", "text",
-                                                 "text", "date", "text", "text", "skip", "skip"))
-
-#filter so they only contain the pupils that pass all checks and the domains we are interested in
-observations_filtered <- observations_filtered %>%
-   mutate(Datum = as.Date(Datum), Score = as.numeric(Score)) |>
-   filter(Leerling %in% pupils_ok$pupil,
+observation_selection <- observation_selection %>%
+  select(Domein, Leerling, Score, Datum, Periode, Jaargang) %>%
+  filter(Leerling %in% pupils_ok$pupil,
          Domein %in% c(
            "Auditieve ontwikkeling",
            "Balanceren",
@@ -254,37 +269,44 @@ observations_filtered <- observations_filtered %>%
            "Taakgerichtheid en zelfstandigheid"
            ))
 
-observations_filtered
+observation_selection
 
 ```
 
+unique(observation_selection$Score)
+[1]  3.0  2.0  1.0  0.0 32.0  2.5  4.0
+- NEED TO LOOK INTO THE 32 SCORE AND REMOVE IT AND TRANSLATE 4s INTO 3s LIKE DANIELIUS- haven't done this
+
+We check if there are any missing values in the dataset, and find that 115 values are missing from Scores. As previously, these rows will not be included in the analysis to maintain reliability and consistency. However, we check if removing these rows led to dropping any pupils altogether, and we find that this is not the case.
+
 ```{r}
 #check if any values are NAs = 115 NAs in score
-sum(is.na(observations_filtered))
+sum(is.na(observation_selection))
 
-#store rows with NAs in different table if we need them for later or to investigate them?
-observations_filtered_nas <- observations_filtered |>
+#store rows with NAs in different table
+observation_selection_nas <- observation_selection |>
   filter(is.na(Score))
-observations_filtered_nas
+observation_selection_nas
 
 #clean table without NAs
-observations_filtered <- observations_filtered |>
+observation_selection <- observation_selection |>
   filter(!is.na(Score))
-observations_filtered
+observation_selection
 
 #check if removing NAs completely removed any pupil from the data = none completely dropped
 pupils_dropped <- setdiff(
-  unique(observations_filtered_nas$Leerling),
-  unique(observations_filtered$Leerling)
+  unique(observation_selection_nas$Leerling),
+  unique(observation_selection$Leerling)
 )
 length(pupils_dropped)
 
 ```
 
+We create a column with the development function, in which, each domain will be identified with their respective label of the three functions it belongs to (cognitive, social-emotional, executive).
+
 ```{r}
 
-#create new column to identify which development function each domain belongs to
-observations_filtered <- observations_filtered |>
+observation_selection <- observation_selection |>
   mutate(
     development_function = case_when(
      Domein %in% c(
@@ -325,94 +347,129 @@ observations_filtered <- observations_filtered |>
       TRUE ~ NA_character_
     )
   )
-observations_filtered
+observation_selection
 
 ```
 
+First, we calculate the elapsed time and six-month interval for every observation.
+
+Some pupils have observations recorded at different times of the year. By calculating the elapsed time relative to each pupil's own start date, we will be able to align the observations by 'time spent in kindergarten', rather than by calendar year.
+
 ```{r}
-#calculate the average score from all observations, for each objective, per pupil, per school year
-domain_year_scores <- observations_filtered |>
-  group_by(Leerling, Jaargang, development_function, Domein) |>
+#Calculate the elapsed time since starting kindergarten for every observation
+
+scores_over_time <- observation_selection |>
+  left_join(
+    kindergarten_checked |> select(pupil, start_date),
+    by = c("Leerling" = "pupil")
+  ) |>
+  mutate(
+    time_in_kindergarten = as.numeric(Datum - start_date) / 365.25,
+    time_period = floor(time_in_kindergarten * 2) / 2
+  )
+scores_over_time
+```
+
+First we calculate the average score for each objective, per pupil, per six-month interval. We group observations into six month intervals, to calculate comparable average scores for each pupil and developmental function at successive stages in their kindergarten time.
+
+Then, we calculate the average of the objectives scores per developmental function. We use the average of the objective scores to ensure that each objective received equal weight. 'n_domain' records the number of objectives contributing to each function score. We can then investigate if recorded scores tend to improve as time in kindergarten increases.
+
+```{r}
+
+# Average score per objective, per pupil, per six-month interval
+domain_scores_6_months <- scores_over_time |>
+  group_by(Leerling, time_period, development_function, Domein) |>
   summarise(
     domain_score = mean(Score, na.rm = TRUE),
     n_observations = n(),
     .groups = "drop"
   )
-domain_year_scores
+domain_scores_6_months
 
-#and now calculate the average of scores per function, each objective receives equal weight by using the objective average here
-function_year_scores <- domain_year_scores |>
+# Average objective scores per developmental function
+function_scores_6_months <- domain_scores_6_months |>
   filter(!is.na(development_function)) |>
-  group_by(Leerling, Jaargang, development_function) |>
+  group_by(Leerling, time_period, development_function) |>
   summarise(
     function_score = mean(domain_score, na.rm = TRUE),
     n_domain = n(),
     .groups = "drop"
   )
+function_scores_6_months
 
-function_year_scores
-#This includes one row per pupil, per year, per developmental function and the average score in each
-#3 functions per year
-#1, 2 or 3 years per pupil
 ```
+The plot below addresses the question "How do developmental function scores tend to change as the time since kindergarten entry increases?"
 
-messy plot, but good to explore the data structure for now
-each line represents one pupil, showing for each function how average score changes across the school years
+Each thin, grey line represents one pupil, showing for each function how average scores change across every 6 months spent in kindergarten. The blue line reflects the overall relationship between time spent in kindergarten and the recorded scores for each function across all pupils. When it rises, the function scores tend to be higher at later intervals (longer period spent in kindergarten).
 
 ```{r}
 
-library(ggplot2)
+ggplot(
+  function_scores_6_months,
+  aes(x = time_period, y = function_score, group = Leerling)
+) +
+  geom_line(alpha = 0.2) +
+  geom_smooth(
+    aes(group = 1),
+    method = "loess",
+    se = TRUE,
+    colour = "blue"
+  ) +
+  facet_wrap(~ development_function, ncol = 1) +
+  scale_x_continuous(breaks = seq(0, 4, by = 0.5)) +
+  labs(
+    x = "Years since starting kindergarten",
+    y = "Average developmental score",
+    title = "Developmental scores over time in kindergarten"
+  ) +
+  theme_minimal()
+  
+```
+We calculate the mean, standard deviation and the number of pupils contributing to each period interval for each function, to see whether scores improve overtime.
+
+```{r}
+interval_summary <- function_scores_6_months |>
+  group_by(time_period, development_function) |>
+  summarise(
+    mean_score = mean(function_score, na.rm = TRUE),
+    sd_score = sd(function_score, na.rm = TRUE),
+    n_pupils = n_distinct(Leerling[!is.na(function_score)]),
+    se = sd_score / sqrt(n_pupils),
+    .groups = "drop"
+  )
+
+interval_summary
+
+```
+
+```{r}
 
 ggplot(
-  function_year_scores,
-  aes(
-    x = as.numeric(stringr::str_extract(Jaargang, "^\\d{4}")),
-    y = function_score,
-    group = Leerling,
-    colour = Leerling
-  )
+  interval_summary,
+  aes(x = time_period, y = mean_score)
 ) +
-  geom_line(alpha = 0.5, show.legend = FALSE) +
-  geom_point(size = 1.5, alpha = 0.7, show.legend = FALSE) +
+  geom_line() +
+  geom_point(aes(size = n_pupils)) +
+  geom_errorbar(
+    aes(
+      ymin = mean_score - 1.96 * se,
+      ymax = mean_score + 1.96 * se
+    ),
+    width = 0.1
+  ) +
   facet_wrap(~ development_function, ncol = 1) +
-  scale_x_continuous(breaks = sort(unique(
-    as.numeric(stringr::str_extract(
-      function_year_scores$Jaargang, "^\\d{4}"
-    ))
-  ))) +
+  scale_x_continuous(breaks = seq(0, 4, by = 0.5)) +
   labs(
-    x = "School year (starting year)",
-    y = "Average score",
-    title = "Changes in developmental scores for each pupil",
-    subtitle = "Each line represents one pupil"
+    x = "Years since starting kindergarten",
+    y = "Mean developmental score",
+    size = "Number of pupils",
+    title = "Average developmental scores by time in kindergarten",
+    subtitle = "Error bars show approximate 95% confidence intervals"
   ) +
   theme_minimal()
 
 ```
 
-```{r}
-
-pupils_ok <- pupils_ok |>
-  mutate(
-    duration_group = case_when(
-      kindergarten_years <= 2 ~ "2 years or less",
-      kindergarten_years <= 2.5 ~ "2 to 2.5 years",
-      kindergarten_years > 2.5 ~ "2.5 years or more",
-      TRUE ~ NA_character_
-    )
-  )
-
-pupils_ok |> count(duration_group)
-
-scores_by_duration <- function_year_scores |>
-  left_join(
-    pupils_ok |> select(pupil, duration_group),
-    by = c("Leerling" = "pupil")
-  )
-
-```
-
-Now need to investigate whether scores improve as children spend more time in kindergarten, use time since the pupil started kindergarten as the x-axi, or what other variable?
 
 ```{r}
 
