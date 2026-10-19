@@ -588,7 +588,6 @@ missing_students2 #still 25 missing, no new pupils dropped
 length(missing_students2)
 
 ```
-
 We join the Cito data with the kindergarten duration data, matching by pupil's names.
 
 ```{r}
@@ -602,7 +601,6 @@ cito_analysis <- cito |>
 #check that every pupil in cito has a matched kindergarten duration value
 sum(is.na(cito_analysis$kindergarten_years))
 ```
-
 Dividing kindergarten duration into six-month intervals here results in groups with too few pupils to reliably compare them. Since the average time in kindergarten is approximately two years, we divide the pupils into two groups: those who spent two years or less in kindergarten, and those who spent more. The groups now allow for a more practical comparison of their cito scores.
 
 ```{r}
